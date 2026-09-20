@@ -44,6 +44,14 @@ local function Tween(o, props, time)
     TweenService:Create(o, TweenInfo.new(time or .12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
 end
 
+local function Sound(parent, id, volume)
+    local x=Instance.new("Sound")
+    x.SoundId="rbxassetid://"..tostring(id)
+    x.Volume=volume or .35
+    x.Parent=parent
+    return x
+end
+
 function TrollUI:Create(config)
     config = config or {}
 
@@ -53,6 +61,11 @@ function TrollUI:Create(config)
     self.Minimized = false
     self.Destroyed = false
     self.Tabs = {}
+    self.SoundIds = {
+        Click = config.ClickSound or 12222216,
+        Open = config.OpenSound or 12222242,
+        Close = config.CloseSound or 12222242
+    }
 
     local old = CoreGui:FindFirstChild("TrollUI")
     if old then old:Destroy() end
@@ -64,6 +77,13 @@ function TrollUI:Create(config)
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     }, CoreGui)
 
+    if config.Sounds ~= false then
+        self._OpenSound = Sound(self.Gui, self.SoundIds.Open, .25)
+        self._ClickSound = Sound(self.Gui, self.SoundIds.Click, .22)
+        self._CloseSound = Sound(self.Gui, self.SoundIds.Close, .22)
+        self._OpenSound:Play()
+    end
+
     self.Main = New("Frame", {
         Size = self.Size,
         Position = UDim2.new(.5, -165, .5, -122),
@@ -72,7 +92,9 @@ function TrollUI:Create(config)
         ClipsDescendants = false
     }, self.Gui)
     Corner(self.Main, 11)
+    self.Main.BackgroundTransparency = 1
     self.Border = Stroke(self.Main, Theme.Accent, 1.5)
+    self.Border.Transparency = 1
 
     self.Header = New("Frame", {
         Size = UDim2.new(1,0,0,43),
@@ -150,6 +172,9 @@ function TrollUI:Create(config)
         Padding = UDim.new(0,7),
         SortOrder = Enum.SortOrder.LayoutOrder
     }, self.Content)
+
+    Tween(self.Main,{BackgroundTransparency=0},.22)
+    Tween(self.Border,{Transparency=0},.22)
     New("UIPadding", {
         PaddingTop = UDim.new(0,2),
         PaddingLeft = UDim.new(0,2),
@@ -158,10 +183,12 @@ function TrollUI:Create(config)
     }, self.Content)
 
     self.CloseButton.MouseButton1Click:Connect(function()
+        if self._CloseSound then self._CloseSound:Play() end
         self:Destroy()
     end)
 
     self.MinButton.MouseButton1Click:Connect(function()
+        if self._ClickSound then self._ClickSound:Play() end
         self:SetMinimized(not self.Minimized)
     end)
 
@@ -183,14 +210,19 @@ end
 
 function TrollUI:SetMinimized(value)
     self.Minimized = value
-    self.Sidebar.Visible = not value
-    self.Content.Visible = not value
     self.MinButton.Text = value and "+" or "—"
-
     if value then
-        self.Main.Size = UDim2.new(self.Size.X.Scale,self.Size.X.Offset,0,43)
+        self.Sidebar.Visible = false
+        self.Content.Visible = false
+        Tween(self.Main,{Size=UDim2.new(self.Size.X.Scale,self.Size.X.Offset,0,43)},.18)
     else
-        self.Main.Size = self.Size
+        Tween(self.Main,{Size=self.Size},.18)
+        task.delay(.12,function()
+            if not self.Destroyed then
+                self.Sidebar.Visible = true
+                self.Content.Visible = true
+            end
+        end)
     end
 end
 
@@ -270,6 +302,7 @@ function TrollUI:AddTab(name)
     end)
 
     button.MouseButton1Click:Connect(function()
+        if self._ClickSound then self._ClickSound:Play() end
         self.CurrentTab = tab
         for _,t in ipairs(self.Tabs) do
             Tween(t.Button,{BackgroundColor3 = t == tab and Theme.Accent or Theme.Element})
@@ -530,6 +563,184 @@ function TrollUI:AddTab(name)
         return self:_Add(button)
     end
 
+    function tab:AddColorPicker(data)
+        data=data or {}
+        local selected=data.Default or Color3.fromRGB(120,85,255)
+        local opened=false
+        local popup
+
+        local holder=New("TextButton",{
+            Size=UDim2.new(1,0,0,38),
+            BackgroundColor3=Theme.Element,
+            Text="",
+            AutoButtonColor=false
+        },self.Window.Content)
+        Corner(holder,8)
+
+        New("TextLabel",{
+            Size=UDim2.new(1,-55,1,0),
+            Position=UDim2.fromOffset(10,0),
+            BackgroundTransparency=1,
+            Text=data.Name or "Color",
+            TextColor3=Theme.Text,
+            TextSize=12,
+            Font=Enum.Font.GothamMedium,
+            TextXAlignment=Enum.TextXAlignment.Left
+        },holder)
+
+        local preview=New("Frame",{
+            Size=UDim2.fromOffset(28,22),
+            Position=UDim2.new(1,-38,.5,-11),
+            BackgroundColor3=selected,
+            BorderSizePixel=0
+        },holder)
+        Corner(preview,7)
+
+        local function close()
+            opened=false
+            if popup then popup:Destroy();popup=nil end
+        end
+
+        local function open()
+            close()
+            opened=true
+            popup=New("Frame",{
+                Size=UDim2.fromOffset(245,205),
+                Position=UDim2.new(1,-245,1,6),
+                BackgroundColor3=Theme.Surface,
+                BorderSizePixel=0,
+                ZIndex=100
+            },holder)
+            Corner(popup,11)
+            Stroke(popup,Theme.Accent,1)
+
+            New("TextLabel",{
+                Size=UDim2.new(1,-20,0,25),
+                Position=UDim2.fromOffset(10,7),
+                BackgroundTransparency=1,
+                Text="Color Picker",
+                TextColor3=Theme.Text,
+                TextSize=13,
+                Font=Enum.Font.GothamBold,
+                TextXAlignment=Enum.TextXAlignment.Left,
+                ZIndex=101
+            },popup)
+
+            local r=selected.R
+            local g=selected.G
+            local b=selected.B
+            local function rgb()
+                return Color3.new(r,g,b)
+            end
+
+            local preview2=New("Frame",{
+                Size=UDim2.fromOffset(52,52),
+                Position=UDim2.fromOffset(96,37),
+                BackgroundColor3=rgb(),
+                BorderSizePixel=0,
+                ZIndex=101
+            },popup)
+            Corner(preview2,9)
+
+            local function makeSlider(name,y,get,set)
+                New("TextLabel",{
+                    Size=UDim2.fromOffset(30,20),
+                    Position=UDim2.fromOffset(10,y-5),
+                    BackgroundTransparency=1,
+                    Text=name,
+                    TextColor3=Theme.Text,
+                    TextSize=11,
+                    Font=Enum.Font.GothamMedium,
+                    ZIndex=101
+                },popup)
+                local bar=New("Frame",{
+                    Size=UDim2.fromOffset(185,7),
+                    Position=UDim2.fromOffset(43,y),
+                    BackgroundColor3=Theme.Track,
+                    BorderSizePixel=0,
+                    ZIndex=101
+                },popup);Corner(bar,5)
+                local fill=New("Frame",{
+                    Size=UDim2.new(get(),0,1,0),
+                    BackgroundColor3=Theme.Accent,
+                    BorderSizePixel=0,
+                    ZIndex=102
+                },bar);Corner(fill,5)
+                local hit=New("TextButton",{
+                    Size=UDim2.new(1,14,1,20),
+                    Position=UDim2.fromOffset(-7,-10),
+                    BackgroundTransparency=1,
+                    Text="",
+                    ZIndex=103
+                },bar)
+                local drag=false
+                local function setByInput(input)
+                    local pct=math.clamp((input.Position.X-bar.AbsolutePosition.X)/math.max(bar.AbsoluteSize.X,1),0,1)
+                    set(pct);fill.Size=UDim2.new(pct,0,1,0);preview2.BackgroundColor3=rgb()
+                end
+                hit.InputBegan:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                        drag=true;setByInput(i)
+                    end
+                end)
+                hit.InputEnded:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end
+                end)
+                UserInputService.InputChanged:Connect(function(i)
+                    if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then setByInput(i) end
+                end)
+            end
+
+            makeSlider("R",98,function()return r end,function(v)r=v end)
+            makeSlider("G",122,function()return g end,function(v)g=v end)
+            makeSlider("B",146,function()return b end,function(v)b=v end)
+
+            local cancel=New("TextButton",{
+                Size=UDim2.fromOffset(100,30),
+                Position=UDim2.fromOffset(10,170),
+                BackgroundColor3=Theme.Element,
+                Text="Cancelar",
+                TextColor3=Theme.Text,
+                TextSize=11,
+                Font=Enum.Font.GothamMedium,
+                AutoButtonColor=false,
+                ZIndex=101
+            },popup);Corner(cancel,7)
+
+            local accept=New("TextButton",{
+                Size=UDim2.fromOffset(100,30),
+                Position=UDim2.fromOffset(135,170),
+                BackgroundColor3=Theme.Accent,
+                Text="Aceptar",
+                TextColor3=Theme.Text,
+                TextSize=11,
+                Font=Enum.Font.GothamBold,
+                AutoButtonColor=false,
+                ZIndex=101
+            },popup);Corner(accept,7)
+
+            cancel.MouseButton1Click:Connect(function()
+                close()
+                if self.Window._ClickSound then self.Window._ClickSound:Play() end
+            end)
+
+            accept.MouseButton1Click:Connect(function()
+                selected=rgb()
+                preview.BackgroundColor3=selected
+                close()
+                if self.Window._ClickSound then self.Window._ClickSound:Play() end
+                if data.Callback then data.Callback(selected) end
+            end)
+        end
+
+        holder.MouseButton1Click:Connect(function()
+            if self.Window._ClickSound then self.Window._ClickSound:Play() end
+            if opened then close() else open() end
+        end)
+
+        return self:_Add(holder)
+    end
+
     function tab:AddInput(data)
         data = data or {}
 
@@ -643,7 +854,14 @@ end
 function TrollUI:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
-    if self.Gui then self.Gui:Destroy() end
+    if self.Main and self.Main.Parent then
+        Tween(self.Main,{BackgroundTransparency=1},.16)
+        task.delay(.17,function()
+            if self.Gui then self.Gui:Destroy() end
+        end)
+    elseif self.Gui then
+        self.Gui:Destroy()
+    end
 end
 
 return TrollUI
